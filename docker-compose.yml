@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: earthquake-db
+    environment:
+      POSTGRES_DB: earthquake_list
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d earthquake_list"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: earthquake-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/earthquake_list
+      PORT: 8787
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8787:8787"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: earthquake-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8787
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres-data:
