@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Pool } from 'pg';
+import { extractPublisher, parseQuake } from './quake.js';
 const P2P_HISTORY_URL = 'https://api.p2pquake.net/v2/history?codes=551&limit=25';
 const DATABASE_URL = process.env.DATABASE_URL;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -10,62 +11,6 @@ if (!DATABASE_URL) {
     throw new Error('DATABASE_URL is not set.');
 }
 const pool = new Pool({ connectionString: DATABASE_URL });
-const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
-const getObject = (value, key) => {
-    const objectValue = value[key];
-    if (!isObject(objectValue)) {
-        throw new Error(`Expected object at key "${key}".`);
-    }
-    return objectValue;
-};
-const getString = (value, key) => {
-    const stringValue = value[key];
-    if (typeof stringValue !== 'string') {
-        throw new Error(`Expected string at key "${key}".`);
-    }
-    return stringValue;
-};
-const getNumber = (value, key) => {
-    const numberValue = value[key];
-    if (typeof numberValue !== 'number' || Number.isNaN(numberValue)) {
-        throw new Error(`Expected number at key "${key}".`);
-    }
-    return numberValue;
-};
-const parseP2PTime = (value) => {
-    const normalized = value.replaceAll('/', '-').replace(' ', 'T') + '+09:00';
-    const parsed = new Date(normalized);
-    if (Number.isNaN(parsed.getTime())) {
-        throw new Error(`Invalid P2P timestamp: "${value}".`);
-    }
-    return parsed;
-};
-const nullableNumber = (value) => (value < 0 ? null : value);
-const parseQuake = (value) => {
-    if (!isObject(value)) {
-        throw new Error('Expected quake data to be an object.');
-    }
-    const id = getString(value, 'id');
-    const code = getNumber(value, 'code');
-    const issue = getObject(value, 'issue');
-    const earthquake = getObject(value, 'earthquake');
-    const hypocenter = getObject(earthquake, 'hypocenter');
-    return {
-        id,
-        code,
-        issueTime: parseP2PTime(getString(issue, 'time')).toISOString(),
-        earthquakeTime: parseP2PTime(getString(earthquake, 'time')).toISOString(),
-        place: getString(hypocenter, 'name'),
-        magnitude: nullableNumber(getNumber(hypocenter, 'magnitude')),
-        maxScale: getNumber(earthquake, 'maxScale'),
-        depth: nullableNumber(getNumber(hypocenter, 'depth')),
-        latitude: nullableNumber(getNumber(hypocenter, 'latitude')),
-        longitude: nullableNumber(getNumber(hypocenter, 'longitude')),
-        domesticTsunami: typeof earthquake.domesticTsunami === 'string' ? earthquake.domesticTsunami : null,
-        foreignTsunami: typeof earthquake.foreignTsunami === 'string' ? earthquake.foreignTsunami : null,
-        raw: value
-    };
-};
 const ensureSchema = async () => {
     await pool.query(`
     CREATE TABLE IF NOT EXISTS jma_quakes (
@@ -162,13 +107,33 @@ const getLatestQuakes = async () => {
       magnitude::float8 AS magnitude,
       max_scale AS "maxScale",
       depth,
+      latitude,
+      longitude,
       domestic_tsunami AS "domesticTsunami",
-      foreign_tsunami AS "foreignTsunami"
+      foreign_tsunami AS "foreignTsunami",
+      raw
     FROM jma_quakes
     ORDER BY earthquake_time DESC
     LIMIT 25
   `);
-    return result.rows;
+    const rows = result.rows.map((r) => {
+        return {
+            id: r.id,
+            code: r.code,
+            issueTime: r.issueTime,
+            earthquakeTime: r.earthquakeTime,
+            place: r.place,
+            magnitude: r.magnitude,
+            maxScale: r.maxScale,
+            depth: r.depth,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            domesticTsunami: r.domesticTsunami,
+            foreignTsunami: r.foreignTsunami,
+            publisher: extractPublisher(r.raw)
+        };
+    });
+    return rows;
 };
 const app = new Hono();
 app.use('*', cors());

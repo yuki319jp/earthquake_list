@@ -3,37 +3,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { Pool } from 'pg'
-
-type JsonObject = Record<string, unknown>
-
-type QuakeInsertInput = {
-  id: string
-  code: number
-  issueTime: string
-  earthquakeTime: string
-  place: string
-  magnitude: number | null
-  maxScale: number
-  depth: number | null
-  latitude: number | null
-  longitude: number | null
-  domesticTsunami: string | null
-  foreignTsunami: string | null
-  raw: JsonObject
-}
-
-type QuakeRow = {
-  id: string
-  code: number
-  issueTime: string
-  earthquakeTime: string
-  place: string
-  magnitude: number | null
-  maxScale: number
-  depth: number | null
-  domesticTsunami: string | null
-  foreignTsunami: string | null
-}
+import { extractPublisher, parseQuake, type QuakeRow } from './quake.js'
 
 const P2P_HISTORY_URL = 'https://api.p2pquake.net/v2/history?codes=551&limit=25'
 const DATABASE_URL = process.env.DATABASE_URL
@@ -44,74 +14,6 @@ if (!DATABASE_URL) {
 }
 
 const pool = new Pool({ connectionString: DATABASE_URL })
-
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const getObject = (value: JsonObject, key: string): JsonObject => {
-  const objectValue = value[key]
-  if (!isObject(objectValue)) {
-    throw new Error(`Expected object at key "${key}".`)
-  }
-  return objectValue
-}
-
-const getString = (value: JsonObject, key: string): string => {
-  const stringValue = value[key]
-  if (typeof stringValue !== 'string') {
-    throw new Error(`Expected string at key "${key}".`)
-  }
-  return stringValue
-}
-
-const getNumber = (value: JsonObject, key: string): number => {
-  const numberValue = value[key]
-  if (typeof numberValue !== 'number' || Number.isNaN(numberValue)) {
-    throw new Error(`Expected number at key "${key}".`)
-  }
-  return numberValue
-}
-
-const parseP2PTime = (value: string): Date => {
-  const normalized = value.replaceAll('/', '-').replace(' ', 'T') + '+09:00'
-  const parsed = new Date(normalized)
-
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid P2P timestamp: "${value}".`)
-  }
-
-  return parsed
-}
-
-const nullableNumber = (value: number): number | null => (value < 0 ? null : value)
-
-const parseQuake = (value: unknown): QuakeInsertInput => {
-  if (!isObject(value)) {
-    throw new Error('Expected quake data to be an object.')
-  }
-
-  const id = getString(value, 'id')
-  const code = getNumber(value, 'code')
-  const issue = getObject(value, 'issue')
-  const earthquake = getObject(value, 'earthquake')
-  const hypocenter = getObject(earthquake, 'hypocenter')
-
-  return {
-    id,
-    code,
-    issueTime: parseP2PTime(getString(issue, 'time')).toISOString(),
-    earthquakeTime: parseP2PTime(getString(earthquake, 'time')).toISOString(),
-    place: getString(hypocenter, 'name'),
-    magnitude: nullableNumber(getNumber(hypocenter, 'magnitude')),
-    maxScale: getNumber(earthquake, 'maxScale'),
-    depth: nullableNumber(getNumber(hypocenter, 'depth')),
-    latitude: nullableNumber(getNumber(hypocenter, 'latitude')),
-    longitude: nullableNumber(getNumber(hypocenter, 'longitude')),
-    domesticTsunami: typeof earthquake.domesticTsunami === 'string' ? earthquake.domesticTsunami : null,
-    foreignTsunami: typeof earthquake.foreignTsunami === 'string' ? earthquake.foreignTsunami : null,
-    raw: value
-  }
-}
 
 const ensureSchema = async (): Promise<void> => {
   await pool.query(`
@@ -211,7 +113,7 @@ const syncLatestQuakes = async (): Promise<{ inserted: number; totalFetched: num
 }
 
 const getLatestQuakes = async (): Promise<QuakeRow[]> => {
-  const result = await pool.query<QuakeRow>(`
+  const result = await pool.query(`
     SELECT
       id,
       code,
@@ -221,14 +123,35 @@ const getLatestQuakes = async (): Promise<QuakeRow[]> => {
       magnitude::float8 AS magnitude,
       max_scale AS "maxScale",
       depth,
+      latitude,
+      longitude,
       domestic_tsunami AS "domesticTsunami",
-      foreign_tsunami AS "foreignTsunami"
+      foreign_tsunami AS "foreignTsunami",
+      raw
     FROM jma_quakes
     ORDER BY earthquake_time DESC
     LIMIT 25
   `)
 
-  return result.rows
+  const rows = result.rows.map((r: any) => {
+    return {
+      id: r.id,
+      code: r.code,
+      issueTime: r.issueTime,
+      earthquakeTime: r.earthquakeTime,
+      place: r.place,
+      magnitude: r.magnitude,
+      maxScale: r.maxScale,
+      depth: r.depth,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      domesticTsunami: r.domesticTsunami,
+      foreignTsunami: r.foreignTsunami,
+      publisher: extractPublisher(r.raw)
+    } as QuakeRow
+  })
+
+  return rows
 }
 
 const app = new Hono()
