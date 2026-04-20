@@ -6,6 +6,7 @@ import {
   MapPin,
   Search,
   SlidersHorizontal,
+  Waves,
   X,
 } from 'lucide-solid'
 import {
@@ -14,23 +15,24 @@ import {
   formatDepth,
   formatMagnitude,
   formatScale,
+  initialSearchFilters,
   isSortOption,
   sortOptions,
   type Quake,
+  type SearchFilters,
   type SortOption,
 } from '../quake'
 
 type ViewMode = 'list' | 'gallery'
 
 type QuakeListSectionProps = {
-  placeQuery: string
-  onPlaceQueryChange: (value: string) => void
-  datetimeQuery: string
-  onDatetimeQueryChange: (value: string) => void
+  filters: SearchFilters
+  onFiltersChange: (next: SearchFilters) => void
   sortBy: SortOption
   onSortByChange: (value: SortOption) => void
   onClearFilters: () => void
   matchingCount: number
+  loadedCount: number
   visibleQuakes: Quake[]
   viewMode: ViewMode
   onViewModeChange: (nextMode: ViewMode) => void
@@ -38,6 +40,9 @@ type QuakeListSectionProps = {
   isViewTransitioning: boolean
   maxAnimatedQuakes: number
   onOpenModal: (quake: Quake) => void
+  hasMore: boolean
+  isLoadingMore: boolean
+  onLoadMore: () => void
 }
 
 type DetailItemProps = {
@@ -45,9 +50,32 @@ type DetailItemProps = {
   value: string
 }
 
+type NumberRangeFieldProps = {
+  label: string
+  minValue: string
+  maxValue: string
+  minPlaceholder: string
+  maxPlaceholder: string
+  onMinChange: (value: string) => void
+  onMaxChange: (value: string) => void
+}
+
+const hasActiveFilters = (filters: SearchFilters): boolean =>
+  JSON.stringify(filters) !== JSON.stringify(initialSearchFilters())
+
 export function QuakeListSection(props: QuakeListSectionProps) {
+  const updateFilter = <K extends keyof SearchFilters>(
+    key: K,
+    value: SearchFilters[K],
+  ): void => {
+    props.onFiltersChange({
+      ...props.filters,
+      [key]: value,
+    })
+  }
+
   return (
-    <div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div class="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
       <aside class="h-fit rounded-[28px] border-0 bg-white/95 p-5 backdrop-blur dark:bg-slate-800/95 lg:sticky lg:top-8">
         <div class="mb-5 flex items-center gap-2">
           <span class="rounded-full bg-slate-100 p-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -55,10 +83,10 @@ export function QuakeListSection(props: QuakeListSectionProps) {
           </span>
           <div>
             <h2 class="text-base font-semibold text-slate-950 dark:text-slate-50">
-              サイドバー
+              詳細検索
             </h2>
             <p class="text-xs text-slate-500 dark:text-slate-400">
-              地名と日時で絞り込み
+              DB 全件から条件つきで検索できます
             </p>
           </div>
         </div>
@@ -66,7 +94,7 @@ export function QuakeListSection(props: QuakeListSectionProps) {
         <div class="space-y-5">
           <label class="block">
             <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
-              地名検索
+              地名
             </span>
             <div class="relative">
               <Search
@@ -75,18 +103,16 @@ export function QuakeListSection(props: QuakeListSectionProps) {
               />
               <input
                 class="w-full rounded-xl bg-slate-50 py-2.5 pl-9 pr-10 text-sm text-slate-800 outline-none transition focus:bg-white dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
-                onInput={(event) =>
-                  props.onPlaceQueryChange(event.currentTarget.value)
-                }
+                onInput={(event) => updateFilter('place', event.currentTarget.value)}
                 placeholder="例: 福島"
                 type="search"
-                value={props.placeQuery}
+                value={props.filters.place}
               />
-              <Show when={props.placeQuery.length > 0}>
+              <Show when={props.filters.place.length > 0}>
                 <button
                   aria-label="地名検索をクリア"
                   class="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                  onClick={() => props.onPlaceQueryChange('')}
+                  onClick={() => updateFilter('place', '')}
                   type="button"
                 >
                   <X size={14} />
@@ -97,20 +123,68 @@ export function QuakeListSection(props: QuakeListSectionProps) {
 
           <label class="block">
             <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
-              日時検索
+              日時文字列
             </span>
             <input
               class="w-full rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:bg-white dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
-              onInput={(event) =>
-                props.onDatetimeQueryChange(event.currentTarget.value)
-              }
+              onInput={(event) => updateFilter('datetime', event.currentTarget.value)}
               placeholder="2026-04-16 08:39"
               type="search"
-              value={props.datetimeQuery}
+              value={props.filters.datetime}
             />
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              発生時刻・発表時刻・ISO形式の文字列で検索できます。
+              発生時刻・発表時刻・ISO 形式の一部一致で検索します。
             </p>
+          </label>
+
+          <NumberRangeField
+            label="マグニチュード"
+            maxPlaceholder="最大"
+            maxValue={props.filters.maxMagnitude}
+            minPlaceholder="最小"
+            minValue={props.filters.minMagnitude}
+            onMaxChange={(value) => updateFilter('maxMagnitude', value)}
+            onMinChange={(value) => updateFilter('minMagnitude', value)}
+          />
+
+          <NumberRangeField
+            label="深さ (km)"
+            maxPlaceholder="最大"
+            maxValue={props.filters.maxDepth}
+            minPlaceholder="最小"
+            minValue={props.filters.minDepth}
+            onMaxChange={(value) => updateFilter('maxDepth', value)}
+            onMinChange={(value) => updateFilter('minDepth', value)}
+          />
+
+          <NumberRangeField
+            label="最大震度"
+            maxPlaceholder="例: 50"
+            maxValue={props.filters.maxScale}
+            minPlaceholder="例: 30"
+            minValue={props.filters.minScale}
+            onMaxChange={(value) => updateFilter('maxScale', value)}
+            onMinChange={(value) => updateFilter('minScale', value)}
+          />
+
+          <label class="flex items-start gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-100">
+            <input
+              checked={props.filters.tsunamiOnly}
+              class="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900"
+              onChange={(event) =>
+                updateFilter('tsunamiOnly', event.currentTarget.checked)
+              }
+              type="checkbox"
+            />
+            <span class="flex-1">
+              <span class="flex items-center gap-2 font-medium">
+                <Waves size={15} />
+                津波情報ありのみ
+              </span>
+              <span class="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                domestic / foreign tsunami に値があるレコードだけ表示します。
+              </span>
+            </span>
           </label>
 
           <label class="block">
@@ -147,11 +221,15 @@ export function QuakeListSection(props: QuakeListSectionProps) {
             onClick={props.onClearFilters}
             type="button"
           >
-            絞り込みをクリア
+            検索条件をクリア
           </button>
 
           <div class="rounded-xl border-0 bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/90 dark:text-slate-400">
-            表示と内部保持は最新100件まで。新しい地震は2分ごとに追加され、重複は自動で除外します。
+            <p>合致件数は DB 全体に対する件数です。</p>
+            <p class="mt-1">
+              読込済み {props.loadedCount} 件
+              {hasActiveFilters(props.filters) ? ' / 条件あり' : ' / 条件なし'}
+            </p>
           </div>
         </div>
       </aside>
@@ -159,7 +237,7 @@ export function QuakeListSection(props: QuakeListSectionProps) {
       <section class="space-y-3">
         <div class="flex flex-col gap-3 rounded-[28px] border-0 bg-white/95 p-4 backdrop-blur dark:bg-slate-800/95 sm:flex-row sm:items-center sm:justify-between">
           <p class="text-sm text-slate-600 dark:text-slate-300">
-            合致件数: {props.matchingCount}件 / 最新100件まで表示
+            合致件数: {props.matchingCount}件 / 読込済み: {props.loadedCount}件
           </p>
           <div
             aria-label="表示モード切り替え"
@@ -289,9 +367,50 @@ export function QuakeListSection(props: QuakeListSectionProps) {
               )}
             </For>
           </div>
+
+          <Show when={props.hasMore}>
+            <div class="flex justify-center pt-2">
+              <button
+                class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
+                disabled={props.isLoadingMore}
+                onClick={props.onLoadMore}
+                type="button"
+              >
+                {props.isLoadingMore ? '読み込み中...' : 'さらに過去のデータを読み込む'}
+              </button>
+            </div>
+          </Show>
         </Show>
       </section>
     </div>
+  )
+}
+
+function NumberRangeField(props: NumberRangeFieldProps) {
+  return (
+    <label class="block">
+      <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
+        {props.label}
+      </span>
+      <div class="grid grid-cols-2 gap-2">
+        <input
+          class="w-full rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:bg-white dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
+          inputMode="decimal"
+          onInput={(event) => props.onMinChange(event.currentTarget.value)}
+          placeholder={props.minPlaceholder}
+          type="number"
+          value={props.minValue}
+        />
+        <input
+          class="w-full rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:bg-white dark:bg-slate-950 dark:text-slate-100 dark:focus:bg-slate-900"
+          inputMode="decimal"
+          onInput={(event) => props.onMaxChange(event.currentTarget.value)}
+          placeholder={props.maxPlaceholder}
+          type="number"
+          value={props.maxValue}
+        />
+      </div>
+    </label>
   )
 }
 

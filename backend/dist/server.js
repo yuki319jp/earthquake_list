@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 import { extractPublisher, parseQuake } from './quake.js';
+import { buildOrderByClause, buildWhereClause, parseQuakeSearchParams, } from './quakeSearch.js';
 const MAX_QUAKES = 100;
 const P2P_HISTORY_URL = `https://api.p2pquake.net/v2/history?codes=551&limit=${MAX_QUAKES}`;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -97,8 +98,24 @@ const syncLatestQuakes = async () => {
     }
     return { inserted, totalFetched: parsed.length };
 };
-const getLatestQuakes = async () => {
-    const result = await pool.query(`
+const mapQuakeRows = (rows) => rows.map((r) => {
+    return {
+        id: r.id,
+        code: r.code,
+        issueTime: r.issueTime,
+        earthquakeTime: r.earthquakeTime,
+        place: r.place,
+        magnitude: r.magnitude,
+        maxScale: r.maxScale,
+        depth: r.depth,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        domesticTsunami: r.domesticTsunami,
+        foreignTsunami: r.foreignTsunami,
+        publisher: extractPublisher(r.raw)
+    };
+});
+const selectColumns = `
     SELECT
       id,
       code,
@@ -113,28 +130,27 @@ const getLatestQuakes = async () => {
       domestic_tsunami AS "domesticTsunami",
       foreign_tsunami AS "foreignTsunami",
       raw
-    FROM jma_quakes
-    ORDER BY earthquake_time DESC
-    LIMIT ${MAX_QUAKES}
-  `);
-    const rows = result.rows.map((r) => {
-        return {
-            id: r.id,
-            code: r.code,
-            issueTime: r.issueTime,
-            earthquakeTime: r.earthquakeTime,
-            place: r.place,
-            magnitude: r.magnitude,
-            maxScale: r.maxScale,
-            depth: r.depth,
-            latitude: r.latitude,
-            longitude: r.longitude,
-            domesticTsunami: r.domesticTsunami,
-            foreignTsunami: r.foreignTsunami,
-            publisher: extractPublisher(r.raw)
-        };
-    });
-    return rows;
+`;
+const getQuakes = async (params) => {
+    const where = buildWhereClause(params);
+    const orderBy = buildOrderByClause(params.sortBy);
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM jma_quakes ${where.sql}`, where.values);
+    const total = countResult.rows[0]?.total ?? 0;
+    const limitPlaceholder = `$${where.values.length + 1}`;
+    const offsetPlaceholder = `$${where.values.length + 2}`;
+    const result = await pool.query(`
+      ${selectColumns}
+      FROM jma_quakes
+      ${where.sql}
+      ${orderBy}
+      LIMIT ${limitPlaceholder}
+      OFFSET ${offsetPlaceholder}
+    `, [...where.values, params.limit, params.offset]);
+    return {
+        data: mapQuakeRows(result.rows),
+        total,
+        hasMore: params.offset + result.rows.length < total
+    };
 };
 const app = new Hono();
 app.use('*', cors());
@@ -144,11 +160,32 @@ app.post('/api/sync', async (c) => {
     return c.json({ synced });
 });
 app.get('/api/quakes', async (c) => {
-    const synced = await syncLatestQuakes();
-    const data = await getLatestQuakes();
+    const params = parseQuakeSearchParams({
+        place: c.req.query('place'),
+        datetime: c.req.query('datetime'),
+        minMagnitude: c.req.query('minMagnitude'),
+        maxMagnitude: c.req.query('maxMagnitude'),
+        minDepth: c.req.query('minDepth'),
+        maxDepth: c.req.query('maxDepth'),
+        minScale: c.req.query('minScale'),
+        maxScale: c.req.query('maxScale'),
+        tsunamiOnly: c.req.query('tsunamiOnly'),
+        sortBy: c.req.query('sortBy'),
+        limit: c.req.query('limit'),
+        offset: c.req.query('offset'),
+        sync: c.req.query('sync')
+    });
+    const synced = params.shouldSync
+        ? await syncLatestQuakes()
+        : { inserted: 0, totalFetched: 0 };
+    const result = await getQuakes(params);
     return c.json({
         synced,
-        data
+        data: result.data,
+        total: result.total,
+        hasMore: result.hasMore,
+        limit: params.limit,
+        offset: params.offset
     });
 });
 app.onError((error, c) => {

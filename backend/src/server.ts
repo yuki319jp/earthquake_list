@@ -4,6 +4,12 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { Pool } from 'pg'
 import { extractPublisher, parseQuake, type QuakeRow } from './quake.js'
+import {
+  buildOrderByClause,
+  buildWhereClause,
+  parseQuakeSearchParams,
+  type QuakeSearchParams,
+} from './quakeSearch.js'
 
 const MAX_QUAKES = 100
 const P2P_HISTORY_URL = `https://api.p2pquake.net/v2/history?codes=551&limit=${MAX_QUAKES}`
@@ -113,28 +119,8 @@ const syncLatestQuakes = async (): Promise<{ inserted: number; totalFetched: num
   return { inserted, totalFetched: parsed.length }
 }
 
-const getLatestQuakes = async (): Promise<QuakeRow[]> => {
-  const result = await pool.query(`
-    SELECT
-      id,
-      code,
-      issue_time AS "issueTime",
-      earthquake_time AS "earthquakeTime",
-      place,
-      magnitude::float8 AS magnitude,
-      max_scale AS "maxScale",
-      depth,
-      latitude,
-      longitude,
-      domestic_tsunami AS "domesticTsunami",
-      foreign_tsunami AS "foreignTsunami",
-      raw
-    FROM jma_quakes
-    ORDER BY earthquake_time DESC
-    LIMIT ${MAX_QUAKES}
-  `)
-
-  const rows = result.rows.map((r: any) => {
+const mapQuakeRows = (rows: any[]): QuakeRow[] =>
+  rows.map((r: any) => {
     return {
       id: r.id,
       code: r.code,
@@ -152,7 +138,53 @@ const getLatestQuakes = async (): Promise<QuakeRow[]> => {
     } as QuakeRow
   })
 
-  return rows
+const selectColumns = `
+    SELECT
+      id,
+      code,
+      issue_time AS "issueTime",
+      earthquake_time AS "earthquakeTime",
+      place,
+      magnitude::float8 AS magnitude,
+      max_scale AS "maxScale",
+      depth,
+      latitude,
+      longitude,
+      domestic_tsunami AS "domesticTsunami",
+      foreign_tsunami AS "foreignTsunami",
+      raw
+`
+
+const getQuakes = async (
+  params: QuakeSearchParams,
+): Promise<{ data: QuakeRow[]; total: number; hasMore: boolean }> => {
+  const where = buildWhereClause(params)
+  const orderBy = buildOrderByClause(params.sortBy)
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM jma_quakes ${where.sql}`,
+    where.values,
+  )
+  const total = countResult.rows[0]?.total ?? 0
+
+  const limitPlaceholder = `$${where.values.length + 1}`
+  const offsetPlaceholder = `$${where.values.length + 2}`
+  const result = await pool.query(
+    `
+      ${selectColumns}
+      FROM jma_quakes
+      ${where.sql}
+      ${orderBy}
+      LIMIT ${limitPlaceholder}
+      OFFSET ${offsetPlaceholder}
+    `,
+    [...where.values, params.limit, params.offset],
+  )
+
+  return {
+    data: mapQuakeRows(result.rows),
+    total,
+    hasMore: params.offset + result.rows.length < total
+  }
 }
 
 const app = new Hono()
@@ -166,12 +198,33 @@ app.post('/api/sync', async (c) => {
 })
 
 app.get('/api/quakes', async (c) => {
-  const synced = await syncLatestQuakes()
-  const data = await getLatestQuakes()
+  const params = parseQuakeSearchParams({
+    place: c.req.query('place'),
+    datetime: c.req.query('datetime'),
+    minMagnitude: c.req.query('minMagnitude'),
+    maxMagnitude: c.req.query('maxMagnitude'),
+    minDepth: c.req.query('minDepth'),
+    maxDepth: c.req.query('maxDepth'),
+    minScale: c.req.query('minScale'),
+    maxScale: c.req.query('maxScale'),
+    tsunamiOnly: c.req.query('tsunamiOnly'),
+    sortBy: c.req.query('sortBy'),
+    limit: c.req.query('limit'),
+    offset: c.req.query('offset'),
+    sync: c.req.query('sync')
+  })
+  const synced = params.shouldSync
+    ? await syncLatestQuakes()
+    : { inserted: 0, totalFetched: 0 }
+  const result = await getQuakes(params)
 
   return c.json({
     synced,
-    data
+    data: result.data,
+    total: result.total,
+    hasMore: result.hasMore,
+    limit: params.limit,
+    offset: params.offset
   })
 })
 
