@@ -129,7 +129,11 @@ export const compareQuakes = (left: Quake, right: Quake, sortBy: SortOption): nu
   return result === 0 ? rightTime - leftTime : result;
 };
 
-export const mergeQuakes = (current: Quake[], incoming: Quake[]): Quake[] => {
+export const mergeQuakes = (
+  current: Quake[],
+  incoming: Quake[],
+  maxEntries = Number.POSITIVE_INFINITY,
+): Quake[] => {
   const merged = new Map<string, Quake>();
 
   for (const quake of current) {
@@ -140,15 +144,20 @@ export const mergeQuakes = (current: Quake[], incoming: Quake[]): Quake[] => {
     merged.set(quake.id, quake);
   }
 
-  return [...merged.values()].sort((left, right) => {
-    const earthquakeDiff =
-      new Date(right.earthquakeTime).getTime() - new Date(left.earthquakeTime).getTime();
-    if (earthquakeDiff !== 0) {
-      return earthquakeDiff;
-    }
+  return [...merged.values()]
+    .sort((left, right) => {
+      const earthquakeDiff =
+        new Date(right.earthquakeTime).getTime() -
+        new Date(left.earthquakeTime).getTime();
+      if (earthquakeDiff !== 0) {
+        return earthquakeDiff;
+      }
 
-    return new Date(right.issueTime).getTime() - new Date(left.issueTime).getTime();
-  });
+      return (
+        new Date(right.issueTime).getTime() - new Date(left.issueTime).getTime()
+      );
+    })
+    .slice(0, maxEntries);
 };
 
 export const matchesDatetimeQuery = (quake: Quake, query: string): boolean => {

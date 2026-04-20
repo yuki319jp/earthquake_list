@@ -62,6 +62,19 @@ describe("quake helpers", () => {
     expect(result[1].place).toBe("新データ");
   });
 
+  it("マージ後の件数を上限で切り詰める", () => {
+    const current = [baseQuake({ id: "quake-1" })];
+    const incoming = [
+      baseQuake({ id: "quake-2", earthquakeTime: "2026-04-17T02:00:00.000Z" }),
+      baseQuake({ id: "quake-3", earthquakeTime: "2026-04-17T01:00:00.000Z" }),
+    ];
+
+    const result = mergeQuakes(current, incoming, 2);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((quake) => quake.id)).toEqual(["quake-2", "quake-3"]);
+  });
+
   it("日時検索が ISO 形式と整形済み文字列の両方に一致する", () => {
     const quake = baseQuake({
       issueTime: "2026-04-17T09:39:00.000Z",

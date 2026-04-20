@@ -3,230 +3,286 @@
 @tailwind utilities;
 
 :root {
-  font-family:
-    'Noto Sans JP',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Helvetica Neue',
-    sans-serif;
-  color: #111827;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.94) 42%, rgba(226, 232, 240, 0.98) 100%);
-  color-scheme: light;
+    font-family:
+        "Noto Sans JP",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Helvetica Neue",
+        sans-serif;
+    color: #111827;
+    background: radial-gradient(
+        circle at top,
+        rgba(255, 255, 255, 0.92),
+        rgba(241, 245, 249, 0.94) 42%,
+        rgba(226, 232, 240, 0.98) 100%
+    );
+    color-scheme: light;
 }
 
 html {
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.94) 42%, rgba(226, 232, 240, 0.98) 100%);
+    background: radial-gradient(
+        circle at top,
+        rgba(255, 255, 255, 0.92),
+        rgba(241, 245, 249, 0.94) 42%,
+        rgba(226, 232, 240, 0.98) 100%
+    );
 }
 
 html.dark {
-  color: #f8fafc;
-  background:
-    radial-gradient(circle at top, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98) 44%, rgba(2, 6, 23, 1) 100%);
-  color-scheme: dark;
+    color: #f8fafc;
+    background: radial-gradient(
+        circle at top,
+        rgba(30, 41, 59, 0.96),
+        rgba(15, 23, 42, 0.98) 44%,
+        rgba(2, 6, 23, 1) 100%
+    );
+    color-scheme: dark;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  background: transparent;
+    margin: 0;
+    min-height: 100vh;
+    background: transparent;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: radial-gradient(circle at center, black 40%, transparent 90%);
-}
-
-html.dark body::before {
-  background-image:
-    linear-gradient(rgba(248, 250, 252, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(248, 250, 252, 0.05) 1px, transparent 1px);
+button,
+input,
+select,
+textarea {
+    border: 0;
 }
 
 .quake-results {
-  display: grid;
-  gap: 0.75rem;
+    display: grid;
+    gap: 0.75rem;
+    will-change: opacity, transform;
 }
 
-.quake-results[data-mode='gallery'] {
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+.quake-results[data-mode="gallery"] {
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.quake-results[data-transitioning="true"] {
+    animation: quake-results-switch 220ms ease both;
 }
 
 .quake-card {
-  height: 100%;
-  transform-origin: center top;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    background-color 180ms ease;
+    height: 100%;
+    content-visibility: auto;
+    contain-intrinsic-size: 260px;
+    transform-origin: center top;
+    transition: background-color 180ms ease;
+    --quake-card-hover-bg: rgba(248, 250, 252, 0.98);
+    --quake-scale-bg: rgba(241, 245, 249, 0.92);
+    --quake-fact-bg: rgba(248, 250, 252, 0.95);
+    --quake-scale-hover-bg: rgba(226, 232, 240, 0.95);
+    --quake-fact-hover-bg: rgba(226, 232, 240, 0.9);
+}
+
+html.dark .quake-card {
+    --quake-card-hover-bg: rgba(30, 41, 59, 0.95);
+    --quake-scale-bg: rgba(71, 85, 105, 0.82);
+    --quake-fact-bg: rgba(51, 65, 85, 0.88);
+    --quake-scale-hover-bg: rgba(100, 116, 139, 0.9);
+    --quake-fact-hover-bg: rgba(71, 85, 105, 0.9);
 }
 
 .quake-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(15, 23, 42, 0.18);
+    background-color: var(--quake-card-hover-bg);
 }
 
-html.dark .quake-card:hover {
-  border-color: rgba(248, 250, 252, 0.16);
+.quake-card__scale,
+.quake-card__fact-row {
+    transition: background-color 180ms ease;
+}
+
+.quake-card .quake-card__scale {
+    background-color: var(--quake-scale-bg);
+}
+
+.quake-card .quake-card__fact-row {
+    background-color: var(--quake-fact-bg);
+}
+
+.quake-card:hover .quake-card__scale {
+    background-color: var(--quake-scale-hover-bg);
+}
+
+.quake-card:hover .quake-card__fact-row {
+    background-color: var(--quake-fact-hover-bg);
 }
 
 .loading-screen__inner {
-  display: grid;
-  gap: 1.5rem;
+    display: grid;
+    gap: 1.5rem;
 }
 
 .loading-screen__badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 0.75rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(248, 250, 252, 0.85);
-  padding: 0.75rem 1rem;
-  color: rgb(51 65 85);
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 9999px;
+    background: rgba(248, 250, 252, 0.85);
+    padding: 0.75rem 1rem;
+    color: rgb(51 65 85);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
 }
 
 html.dark .loading-screen__badge {
-  border-color: rgba(248, 250, 252, 0.12);
-  background: rgba(15, 23, 42, 0.72);
-  color: rgb(226 232 240);
+    background: rgba(15, 23, 42, 0.72);
+    color: rgb(226 232 240);
 }
 
 .loading-screen__pulse {
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 9999px;
-  background: currentColor;
-  animation: loading-pulse 1.2s ease-in-out infinite;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: loading-pulse 1.2s ease-in-out infinite;
 }
 
 .loading-screen__meter {
-  overflow: hidden;
-  height: 0.5rem;
-  border-radius: 9999px;
-  background: rgba(148, 163, 184, 0.22);
+    overflow: hidden;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.22);
 }
 
 html.dark .loading-screen__meter {
-  background: rgba(100, 116, 139, 0.24);
+    background: rgba(100, 116, 139, 0.24);
 }
 
 .loading-screen__meter-bar {
-  display: block;
-  height: 100%;
-  width: 34%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.9), rgba(71, 85, 105, 0.65));
-  animation: loading-slide 1.6s ease-in-out infinite;
+    display: block;
+    height: 100%;
+    width: 34%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.9));
+    animation: loading-slide 1.6s ease-in-out infinite;
 }
 
 html.dark .loading-screen__meter-bar {
-  background: linear-gradient(90deg, rgba(248, 250, 252, 0.95), rgba(148, 163, 184, 0.55));
+    background: linear-gradient(
+        90deg,
+        rgba(248, 250, 252, 0.95),
+        rgba(148, 163, 184, 0.55)
+    );
 }
 
 .loading-screen__skeleton {
-  background:
-    linear-gradient(90deg, rgba(226, 232, 240, 0.92), rgba(248, 250, 252, 1), rgba(226, 232, 240, 0.92));
-  background-size: 200% 100%;
-  animation: skeleton-wave 1.5s ease-in-out infinite;
+    background: linear-gradient(
+        90deg,
+        rgba(226, 232, 240, 0.92),
+        rgba(248, 250, 252, 1),
+        rgba(226, 232, 240, 0.92)
+    );
+    background-size: 200% 100%;
+    animation: skeleton-wave 1.5s ease-in-out infinite;
 }
 
 html.dark .loading-screen__skeleton {
-  background:
-    linear-gradient(90deg, rgba(30, 41, 59, 0.92), rgba(51, 65, 85, 1), rgba(30, 41, 59, 0.92));
-  background-size: 200% 100%;
+    background: linear-gradient(
+        90deg,
+        rgba(30, 41, 59, 0.92),
+        rgba(51, 65, 85, 1),
+        rgba(30, 41, 59, 0.92)
+    );
+    background-size: 200% 100%;
 }
 
-.quake-results[data-animation-phase='a'] .quake-card {
-  animation: quake-card-enter-a 240ms ease both;
-  animation-delay: calc(var(--quake-index, 0) * 28ms);
+.quake-results[data-animate="true"][data-animation-phase="a"] .quake-card {
+    animation: quake-card-enter-a 240ms ease both;
+    animation-delay: calc(var(--quake-index, 0) * 28ms);
 }
 
-.quake-results[data-animation-phase='b'] .quake-card {
-  animation: quake-card-enter-b 240ms ease both;
-  animation-delay: calc(var(--quake-index, 0) * 28ms);
+.quake-results[data-animate="true"][data-animation-phase="b"] .quake-card {
+    animation: quake-card-enter-b 240ms ease both;
+    animation-delay: calc(var(--quake-index, 0) * 28ms);
 }
 
 @keyframes loading-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
+    0%,
+    100% {
+        opacity: 0.35;
+        transform: scale(0.8);
+    }
 
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 @keyframes loading-slide {
-  0% {
-    transform: translateX(-100%);
-  }
+    0% {
+        transform: translateX(-100%);
+    }
 
-  100% {
-    transform: translateX(320%);
-  }
+    100% {
+        transform: translateX(320%);
+    }
 }
 
 @keyframes skeleton-wave {
-  0% {
-    background-position: 100% 50%;
-  }
+    0% {
+        background-position: 100% 50%;
+    }
 
-  100% {
-    background-position: 0 50%;
-  }
+    100% {
+        background-position: 0 50%;
+    }
 }
 
 @keyframes quake-card-enter-a {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
 
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 @keyframes quake-card-enter-b {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
 
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes quake-results-switch {
+    from {
+        opacity: 0.72;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quake-card,
-  .quake-results[data-animation-phase='a'] .quake-card,
-  .quake-results[data-animation-phase='b'] .quake-card,
-  .loading-screen__pulse,
-  .loading-screen__meter-bar,
-  .loading-screen__skeleton {
-    animation: none;
-    transition: none;
-    transform: none;
-  }
+    .quake-card,
+    .quake-results[data-animation-phase="a"] .quake-card,
+    .quake-results[data-animation-phase="b"] .quake-card,
+    .quake-results[data-transitioning="true"],
+    .loading-screen__pulse,
+    .loading-screen__meter-bar,
+    .loading-screen__skeleton {
+        animation: none;
+        transition: none;
+        transform: none;
+    }
 }

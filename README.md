@@ -11,7 +11,7 @@
 
 ## できること
 
-- 最新 25 件の地震情報を取得して保存
+- 最新 100 件の地震情報を取得して保存
 - 保存済みデータを重複なく保持
 - 地名検索
 - 日時検索
@@ -26,7 +26,7 @@
 
 - P2P 地震情報 API
 - 取得対象: `code=551`
-- 取得 URL: `https://api.p2pquake.net/v2/history?codes=551&limit=25`
+- 取得 URL: `https://api.p2pquake.net/v2/history?codes=551&limit=100`
 
 ## セットアップ
 
@@ -99,14 +99,14 @@ PostgreSQL は別途起動しておき、`DATABASE_URL` を合わせてくださ
 {
   "synced": {
     "inserted": 3,
-    "totalFetched": 25
+    "totalFetched": 100
   }
 }
 ```
 
 ### `GET /api/quakes`
 
-同期を実行した上で、保存済みの最新 25 件を返します。
+同期を実行した上で、保存済みの最新 100 件を返します。
 
 レスポンス例:
 
@@ -114,7 +114,7 @@ PostgreSQL は別途起動しておき、`DATABASE_URL` を合わせてくださ
 {
   "synced": {
     "inserted": 0,
-    "totalFetched": 25
+    "totalFetched": 100
   },
   "data": [
     {

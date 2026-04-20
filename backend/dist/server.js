@@ -4,7 +4,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 import { extractPublisher, parseQuake } from './quake.js';
-const P2P_HISTORY_URL = 'https://api.p2pquake.net/v2/history?codes=551&limit=25';
+const MAX_QUAKES = 100;
+const P2P_HISTORY_URL = `https://api.p2pquake.net/v2/history?codes=551&limit=${MAX_QUAKES}`;
 const DATABASE_URL = process.env.DATABASE_URL;
 const PORT = Number(process.env.PORT ?? 8787);
 if (!DATABASE_URL) {
@@ -114,7 +115,7 @@ const getLatestQuakes = async () => {
       raw
     FROM jma_quakes
     ORDER BY earthquake_time DESC
-    LIMIT 25
+    LIMIT ${MAX_QUAKES}
   `);
     const rows = result.rows.map((r) => {
         return {
