@@ -5,8 +5,7 @@ type AppHeaderProps = {
   onRefresh: () => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
-  totalCount: number
-  visibleCount: number
+  loadedCount: number
   matchingCount: number
   syncStatus: {
     inserted: number
@@ -26,7 +25,7 @@ export function AppHeader(props: AppHeaderProps) {
             地震情報リスト
           </h1>
           <p class="text-sm text-slate-500 dark:text-slate-400">
-            モノトーンで整理した最新100件の地震情報
+            モノトーンで整理した地震情報を DB から検索
           </p>
         </div>
       </div>
@@ -53,8 +52,7 @@ export function AppHeader(props: AppHeaderProps) {
           {props.theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         <p class="text-sm text-slate-500 dark:text-slate-400">
-          保持: {props.totalCount}件 / 表示: {props.visibleCount}件 / 合致:{' '}
-          {props.matchingCount}件
+          読込済み: {props.loadedCount}件 / 検索総数: {props.matchingCount}件
         </p>
         <p class="text-sm text-slate-500 dark:text-slate-400">
           最新同期: 保存 {props.syncStatus.inserted}件 / 取得{' '}

@@ -82,8 +82,8 @@ textarea {
 
 html.dark .quake-card {
     --quake-card-hover-bg: rgba(30, 41, 59, 0.95);
-    --quake-scale-bg: rgba(71, 85, 105, 0.82);
-    --quake-fact-bg: rgba(51, 65, 85, 0.88);
+    --quake-scale-bg: rgba(51, 65, 85, 0.96);
+    --quake-fact-bg: rgba(15, 23, 42, 0.86);
     --quake-scale-hover-bg: rgba(100, 116, 139, 0.9);
     --quake-fact-hover-bg: rgba(71, 85, 105, 0.9);
 }

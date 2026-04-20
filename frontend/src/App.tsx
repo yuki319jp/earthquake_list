@@ -1,14 +1,14 @@
-import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js'
 import { AppHeader } from './components/AppHeader'
 import { InitialLoadingScreen } from './components/InitialLoadingScreen'
 import { QuakeListSection } from './components/QuakeListSection'
 import { QuakeModal } from './components/QuakeModal'
 import {
   compareQuakes,
-  matchesDatetimeQuery,
+  initialSearchFilters,
   mergeQuakes,
-  normalizeText,
   type Quake,
+  type SearchFilters,
   type SortOption,
 } from './quake'
 
@@ -18,20 +18,74 @@ type QuakeResponse = {
     totalFetched: number
   }
   data: Quake[]
+  total: number
+  hasMore: boolean
+  limit: number
+  offset: number
 }
 
 type ViewMode = 'list' | 'gallery'
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787'
-const MAX_VISIBLE_QUAKES = 100
+const PAGE_SIZE = 100
 const MAX_ANIMATED_QUAKES = 24
 const AUTO_REFRESH_INTERVAL_MS = 120_000
+const SEARCH_DEBOUNCE_MS = 250
 const VIEW_TRANSITION_DURATION_MS = 220
 const MODAL_TRANSITION_DURATION_MS = 220
 
-const fetchQuakes = async (): Promise<QuakeResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/quakes`)
+const buildSearchParams = (
+  filters: SearchFilters,
+  sortBy: SortOption,
+  offset: number,
+  sync: boolean,
+): URLSearchParams => {
+  const params = new URLSearchParams()
+
+  if (filters.place.trim().length > 0) {
+    params.set('place', filters.place.trim())
+  }
+
+  if (filters.datetime.trim().length > 0) {
+    params.set('datetime', filters.datetime.trim())
+  }
+
+  const numericEntries = [
+    ['minMagnitude', filters.minMagnitude],
+    ['maxMagnitude', filters.maxMagnitude],
+    ['minDepth', filters.minDepth],
+    ['maxDepth', filters.maxDepth],
+    ['minScale', filters.minScale],
+    ['maxScale', filters.maxScale],
+  ] as const
+
+  for (const [key, value] of numericEntries) {
+    if (value.trim().length > 0) {
+      params.set(key, value.trim())
+    }
+  }
+
+  if (filters.tsunamiOnly) {
+    params.set('tsunamiOnly', 'true')
+  }
+
+  params.set('sortBy', sortBy)
+  params.set('limit', String(PAGE_SIZE))
+  params.set('offset', String(offset))
+  params.set('sync', sync ? 'true' : 'false')
+
+  return params
+}
+
+const fetchQuakes = async (
+  filters: SearchFilters,
+  sortBy: SortOption,
+  offset: number,
+  sync: boolean,
+): Promise<QuakeResponse> => {
+  const searchParams = buildSearchParams(filters, sortBy, offset, sync)
+  const response = await fetch(`${API_BASE_URL}/api/quakes?${searchParams.toString()}`)
 
   if (!response.ok) {
     throw new Error(`地震情報を取得できませんでした: ${response.status}`)
@@ -46,11 +100,13 @@ function App() {
     inserted: 0,
     totalFetched: 0,
   })
-  const [placeQuery, setPlaceQuery] = createSignal('')
-  const [datetimeQuery, setDatetimeQuery] = createSignal('')
+  const [filters, setFilters] = createSignal<SearchFilters>(initialSearchFilters())
   const [sortBy, setSortBy] = createSignal<SortOption>('time-desc')
+  const [totalCount, setTotalCount] = createSignal(0)
+  const [hasMore, setHasMore] = createSignal(false)
   const [isLoading, setIsLoading] = createSignal(true)
   const [isRefreshing, setIsRefreshing] = createSignal(false)
+  const [isLoadingMore, setIsLoadingMore] = createSignal(false)
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
   const [theme, setTheme] = createSignal<'light' | 'dark'>('light')
   const [viewMode, setViewMode] = createSignal<ViewMode>('list')
@@ -63,9 +119,61 @@ function App() {
   let viewTransitionTimeoutId: number | undefined
   let modalTransitionTimeoutId: number | undefined
   let modalAnimationFrameId: number | undefined
+  let latestRequestId = 0
+  let shouldSkipNextSearch = true
+
+  const applyResponse = (response: QuakeResponse, mode: 'replace' | 'append'): void => {
+    setQuakes((current) =>
+      mode === 'append'
+        ? mergeQuakes(current, response.data, Number.POSITIVE_INFINITY, sortBy())
+        : [...response.data].sort((left, right) => compareQuakes(left, right, sortBy())),
+    )
+    setSyncStatus(response.synced)
+    setTotalCount(response.total)
+    setHasMore(response.hasMore)
+    setErrorMessage(null)
+  }
+
+  const loadQuakes = async (
+    mode: 'replace' | 'append',
+    options: { offset: number; sync: boolean },
+  ): Promise<void> => {
+    const requestId = ++latestRequestId
+
+    try {
+      const response = await fetchQuakes(
+        filters(),
+        sortBy(),
+        options.offset,
+        options.sync,
+      )
+
+      if (requestId !== latestRequestId) {
+        return
+      }
+
+      applyResponse(response, mode)
+    } catch (error) {
+      if (requestId !== latestRequestId) {
+        return
+      }
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : '地震情報を取得できませんでした。',
+      )
+    } finally {
+      if (requestId === latestRequestId) {
+        setIsLoading(false)
+        setIsRefreshing(false)
+        setIsLoadingMore(false)
+      }
+    }
+  }
 
   const refreshQuakes = async (): Promise<void> => {
-    if (isRefreshing()) {
+    if (isRefreshing() || isLoadingMore()) {
       return
     }
 
@@ -76,23 +184,16 @@ function App() {
       setIsRefreshing(true)
     }
 
-    try {
-      const response = await fetchQuakes()
-      setQuakes((current) =>
-        mergeQuakes(current, response.data, MAX_VISIBLE_QUAKES),
-      )
-      setSyncStatus(response.synced)
-      setErrorMessage(null)
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : '地震情報を取得できませんでした。',
-      )
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
+    await loadQuakes('replace', { offset: 0, sync: true })
+  }
+
+  const loadMoreQuakes = async (): Promise<void> => {
+    if (isLoading() || isRefreshing() || isLoadingMore() || !hasMore()) {
+      return
     }
+
+    setIsLoadingMore(true)
+    await loadQuakes('append', { offset: quakes().length, sync: false })
   }
 
   const closeModal = (): void => {
@@ -145,6 +246,29 @@ function App() {
     })
   })
 
+  createEffect(() => {
+    const currentFilters = filters()
+    const currentSortBy = sortBy()
+
+    if (isLoading()) {
+      return
+    }
+
+    if (shouldSkipNextSearch) {
+      shouldSkipNextSearch = false
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsRefreshing(true)
+      void loadQuakes('replace', { offset: 0, sync: false })
+    }, SEARCH_DEBOUNCE_MS)
+
+    onCleanup(() => window.clearTimeout(timeoutId))
+    void currentFilters
+    void currentSortBy
+  })
+
   onMount(() => {
     try {
       const saved = localStorage.getItem('theme')
@@ -185,32 +309,8 @@ function App() {
     })
   })
 
-  const filteredQuakes = createMemo(() => {
-    const place = normalizeText(placeQuery())
-    const datetime = normalizeText(datetimeQuery())
-
-    return quakes().filter((quake) => {
-      const placeMatches =
-        place.length === 0 || normalizeText(quake.place).includes(place)
-      const datetimeMatches = matchesDatetimeQuery(quake, datetime)
-
-      return placeMatches && datetimeMatches
-    })
-  })
-
-  const sortedQuakes = createMemo(() =>
-    [...filteredQuakes()].sort((left, right) =>
-      compareQuakes(left, right, sortBy()),
-    ),
-  )
-  const visibleQuakes = createMemo(() =>
-    sortedQuakes().slice(0, MAX_VISIBLE_QUAKES),
-  )
-  const matchingCount = createMemo(() => filteredQuakes().length)
-
   const clearFilters = (): void => {
-    setPlaceQuery('')
-    setDatetimeQuery('')
+    setFilters(initialSearchFilters())
     setSortBy('time-desc')
   }
 
@@ -259,13 +359,12 @@ function App() {
       <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <AppHeader
           isRefreshing={isRefreshing()}
-          matchingCount={matchingCount()}
+          loadedCount={quakes().length}
+          matchingCount={totalCount()}
           onRefresh={() => void refreshQuakes()}
           onToggleTheme={toggleTheme}
           syncStatus={syncStatus()}
           theme={theme()}
-          totalCount={quakes().length}
-          visibleCount={visibleQuakes().length}
         />
 
         <Show when={errorMessage()}>
@@ -281,21 +380,23 @@ function App() {
           fallback={<InitialLoadingScreen />}
         >
           <QuakeListSection
-            datetimeQuery={datetimeQuery()}
+            filters={filters()}
+            hasMore={hasMore()}
+            isLoadingMore={isLoadingMore()}
             isViewTransitioning={isViewTransitioning()}
-            matchingCount={matchingCount()}
+            loadedCount={quakes().length}
+            matchingCount={totalCount()}
             maxAnimatedQuakes={MAX_ANIMATED_QUAKES}
             onClearFilters={clearFilters}
-            onDatetimeQueryChange={setDatetimeQuery}
+            onFiltersChange={setFilters}
+            onLoadMore={() => void loadMoreQuakes()}
             onOpenModal={openModal}
-            onPlaceQueryChange={setPlaceQuery}
             onSortByChange={setSortBy}
             onViewModeChange={handleViewModeChange}
-            placeQuery={placeQuery()}
             sortBy={sortBy()}
             viewAnimationPhase={viewAnimationPhase()}
             viewMode={viewMode()}
-            visibleQuakes={visibleQuakes()}
+            visibleQuakes={quakes()}
           />
         </Show>
       </div>
